@@ -75,5 +75,6 @@ class Evaluator:
         preds = np.array(preds)
         corrcoef = np.corrcoef(truths, preds)[0, 1]
         r2 = r2_score(truths, preds)
+        print(truths, preds)
         rmse = mean_squared_error(truths, preds) ** 0.5
         return corrcoef, r2, rmse

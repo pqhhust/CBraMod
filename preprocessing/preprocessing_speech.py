@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 
 
-train_dir = '/data/datasets/BigDownstream/Imagined speech/mat/Training set'
-val_dir = '/data/datasets/BigDownstream/Imagined speech/mat/Validation set'
-test_dir = '/data/datasets/BigDownstream/Imagined speech/mat/Test set'
+train_dir = '/home/user01/aiotlab/pqhung/EEG/BCIC-2020/Track#3 Imagined speech classification/Training set'
+val_dir = '/home/user01/aiotlab/pqhung/EEG/BCIC-2020/Track#3 Imagined speech classification/Validation set'
+test_dir = '/home/user01/aiotlab/pqhung/EEG/BCIC-2020/Track#3 Imagined speech classification/Test set'
 
 
 
@@ -28,7 +28,7 @@ dataset = {
     'test': list(),
 }
 
-db = lmdb.open('/data/datasets/BigDownstream/Imagined speech/processed', map_size=3000000000)
+db = lmdb.open('./data/datasets/BigDownstream/Imagined speech/processed', map_size=3000000000)
 
 for file in files_dict['train']:
     data = scipy.io.loadmat(os.path.join(train_dir, file))
@@ -71,7 +71,7 @@ for file in files_dict['val']:
         dataset['val'].append(sample_key)
 
 
-df = pd.read_excel("/data/datasets/BigDownstream/Imagined speech/mat/Track3_Answer Sheet_Test.xlsx")
+df = pd.read_excel("/home/user01/aiotlab/pqhung/EEG/BCIC-2020/Track#3 Imagined speech classification/Test set/Track3_Answer Sheet_Test.xlsx")
 df_=df.head(53)
 all_labels=df_.values
 print(all_labels.shape)
@@ -80,22 +80,23 @@ print(all_labels.shape)
 print(all_labels)
 
 for j, file in enumerate(files_dict['test']):
-    data = h5py.File(os.path.join(test_dir, file))
-    eeg = data['epo_test']['x'][:]
-    labels = all_labels[j]
-    eeg = eeg[:, :, -768:]
-    eeg = signal.resample(eeg, 600, axis=2).reshape(50, 64, 3, 200)
-    print(eeg.shape, labels.shape)
-    for i, (sample, label) in enumerate(zip(eeg, labels)):
-        sample_key = f'test-{file[:-4]}-{i}'
-        data_dict = {
-            'sample': sample, 'label': label-1,
-        }
-        txn = db.begin(write=True)
-        txn.put(key=sample_key.encode(), value=pickle.dumps(data_dict))
-        txn.commit()
-        print(sample_key)
-        dataset['test'].append(sample_key)
+    if file.endswith('.mat'):
+        data = h5py.File(os.path.join(test_dir, file))
+        eeg = data['epo_test']['x'][:]
+        labels = all_labels[j]
+        eeg = eeg[:, :, -768:]
+        eeg = signal.resample(eeg, 600, axis=2).reshape(50, 64, 3, 200)
+        print(eeg.shape, labels.shape)
+        for i, (sample, label) in enumerate(zip(eeg, labels)):
+            sample_key = f'test-{file[:-4]}-{i}'
+            data_dict = {
+                'sample': sample, 'label': label-1,
+            }
+            txn = db.begin(write=True)
+            txn.put(key=sample_key.encode(), value=pickle.dumps(data_dict))
+            txn.commit()
+            print(sample_key)
+            dataset['test'].append(sample_key)
 
 
 txn = db.begin(write=True)

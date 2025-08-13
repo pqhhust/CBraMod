@@ -7,6 +7,8 @@ import torch
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss, MSELoss
 from tqdm import tqdm
 
+import wandb
+
 from finetune_evaluator import Evaluator
 
 
@@ -97,6 +99,16 @@ class Trainer(object):
 
             with torch.no_grad():
                 acc, kappa, f1, cm = self.val_eval.get_metrics_for_multiclass(self.model)
+                wandb.log({
+                    "epoch": epoch + 1,
+                    "train/loss": np.mean(losses),
+                    "val/acc": acc,
+                    "val/kappa": kappa,
+                    "val/f1": f1,
+                    # "val/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist()),
+                    "lr": optim_state['param_groups'][0]['lr'],
+                    "time_min": (timer() - start_time) / 60
+                }, step=epoch + 1)
                 print(
                     "Epoch {} : Training Loss: {:.5f}, acc: {:.5f}, kappa: {:.5f}, f1: {:.5f}, LR: {:.5f}, Time elapsed {:.2f} mins".format(
                         epoch + 1,
@@ -135,6 +147,12 @@ class Trainer(object):
                 )
             )
             print(cm)
+            wandb.log({
+                "test/acc": acc,
+                "test/kappa": kappa,
+                "test/f1": f1,
+                # "test/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist())
+            })
             if not os.path.isdir(self.params.model_dir):
                 os.makedirs(self.params.model_dir)
             model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_kappa_{:.5f}_f1_{:.5f}.pth".format(best_f1_epoch, acc, kappa, f1)
@@ -170,6 +188,16 @@ class Trainer(object):
 
             with torch.no_grad():
                 acc, pr_auc, roc_auc, cm = self.val_eval.get_metrics_for_binaryclass(self.model)
+                wandb.log({
+                    "epoch": epoch + 1,
+                    "train/loss": np.mean(losses),
+                    "val/acc": acc,
+                    "val/pr_auc": pr_auc,
+                    "val/roc_auc": roc_auc,
+                    # "val/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist()),
+                    "lr": optim_state['param_groups'][0]['lr'],
+                    "time_min": (timer() - start_time) / 60
+                }, step=epoch + 1)
                 print(
                     "Epoch {} : Training Loss: {:.5f}, acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}, LR: {:.5f}, Time elapsed {:.2f} mins".format(
                         epoch + 1,
@@ -208,6 +236,12 @@ class Trainer(object):
                 )
             )
             print(cm)
+            wandb.log({
+                "test/acc": acc,
+                "test/pr_auc": pr_auc,
+                "test/roc_auc": roc_auc,
+                # "test/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist())
+            })
             if not os.path.isdir(self.params.model_dir):
                 os.makedirs(self.params.model_dir)
             model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_pr_{:.5f}_roc_{:.5f}.pth".format(best_f1_epoch, acc, pr_auc, roc_auc)
@@ -241,6 +275,15 @@ class Trainer(object):
 
             with torch.no_grad():
                 corrcoef, r2, rmse = self.val_eval.get_metrics_for_regression(self.model)
+                wandb.log({
+                    "epoch": epoch + 1,
+                    "train/loss": np.mean(losses),
+                    "val/corrcoef": corrcoef,
+                    "val/r2": r2,
+                    "val/rmse": rmse,
+                    "lr": optim_state['param_groups'][0]['lr'],
+                    "time_min": (timer() - start_time) / 60
+                }, step=epoch + 1)
                 print(
                     "Epoch {} : Training Loss: {:.5f}, corrcoef: {:.5f}, r2: {:.5f}, rmse: {:.5f}, LR: {:.5f}, Time elapsed {:.2f} mins".format(
                         epoch + 1,
@@ -277,6 +320,12 @@ class Trainer(object):
                     rmse,
                 )
             )
+            
+            wandb.log({
+                "test/corrcoef": corrcoef,
+                "test/r2": r2,
+                "test/rmse": rmse
+            })
 
             if not os.path.isdir(self.params.model_dir):
                 os.makedirs(self.params.model_dir)
