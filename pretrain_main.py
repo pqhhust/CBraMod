@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from datasets.pretraining_dataset import PretrainingDataset
+from datasets.merged_dataset import MergedPretrainingDataset
 from models import cbramod
 from pretrain_trainer import Trainer
 
