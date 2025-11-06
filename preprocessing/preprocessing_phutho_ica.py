@@ -11,7 +11,6 @@ import lmdb
 import argparse
 
 selected_channels = ['Fp1', 'Fp2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'Fz', 'Cz', 'Pz']
-# selected_channels = ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'FZ', 'CZ', 'PZ']
 
 def setup_seed(seed):
     np.random.seed(seed)
@@ -38,9 +37,9 @@ def ICA_for_raw(raw_full):
     ica = ICA(n_components=10, max_iter="auto", random_state=42)
     ica.fit(filt_raw)
 
-    eog_indices, _ = ica.find_bads_eog(raw_for_ica, ch_name='Fp1', threshold=0.9)
+    eog_indices, _ = ica.find_bads_eog(raw_for_ica, ch_name='Fp1-Ref', threshold=0.9)
 
-    ecg_indices, _ = ica.find_bads_ecg(raw_for_ica, ch_name='C3', method='correlation', threshold=0.9)
+    ecg_indices, _ = ica.find_bads_ecg(raw_for_ica, ch_name='C3-Ref', method='correlation', threshold=0.9)
 
     ica.exclude = ecg_indices + eog_indices
 
@@ -58,11 +57,8 @@ def preprocessing_recording(file_path, file_key_list: list, db):
     except Exception as e:
         print(f"Skipping file (cannot read EDF): {file_path}\nError: {e}")
         return
-    try:
-        raw.pick_channels(selected_channels, ordered=True)
-    except Exception as e:
-        print(f"Skipping file (cannot pick channels): {file_path}\nError: {e}")
-        return
+    
+    raw.pick_channels(selected_channels, ordered=True)
     raw = ICA_for_raw(raw)
     # print(raw.info)
     raw.resample(200)
@@ -91,11 +87,12 @@ def preprocessing_recording(file_path, file_key_list: list, db):
     eeg_array = eeg_array.transpose(0, 3, 1, 2)  # (n_win, chs, 30, 200)
     # print(eeg_array.shape)
     file_name = file_path.split('/')[-1][:-4]
+    file_dir = file_path.split('/')[-2]
 
     for i, sample in enumerate(eeg_array):
         # print(i, sample.shape)
         if np.max(np.abs(sample)) < 100:
-            sample_key = f'{file_name}_{i}'
+            sample_key = f'{file_dir}_{file_name}_{i}'
             print(sample_key)
             file_key_list.append(sample_key)
             txn = db.begin(write=True)
@@ -123,14 +120,13 @@ if __name__ == '__main__':
     parser.add_argument('--out', type=str, default='/home/user01/aiotlab/pqhung/CBraMod/data/dummy_data_ica_rescale', help='output lmdb path')
     args = parser.parse_args()
     setup_seed(1)
-    if args.data == '/home/user01/aiotlab/pqhung/EEG/data_phu_tho':
-        selected_channels = ['Fp1-Ref', 'Fp2-Ref', 'F3-Ref', 'F4-Ref', 'C3-Ref', 'C4-Ref', 'P3-Ref', 'P4-Ref', 'O1-Ref', 'O2-Ref', 'F7-Ref', 'F8-Ref', 'T3-Ref', 'T4-Ref', 'T5-Ref', 'T6-Ref', 'Fz-Ref', 'Cz-Ref', 'Pz-Ref']
+    selected_channels = ['Fp1-Ref', 'Fp2-Ref', 'F3-Ref', 'F4-Ref', 'C3-Ref', 'C4-Ref', 'P3-Ref', 'P4-Ref', 'O1-Ref', 'O2-Ref', 'F7-Ref', 'F8-Ref', 'T3-Ref', 'T4-Ref', 'T5-Ref', 'T6-Ref', 'Fz-Ref', 'Cz-Ref', 'Pz-Ref']
     file_path_list = iter_files(args.data)
 
     file_path_list = sorted(file_path_list)
     random.shuffle(file_path_list)
     # print(file_path_list)
-    db = lmdb.open(args.out, map_size=34359738368*2)
+    db = lmdb.open(args.out, map_size=17179869184)
     file_key_list = []
     for file_path in tqdm(file_path_list):
         preprocessing_recording(file_path, file_key_list, db)

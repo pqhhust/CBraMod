@@ -3,11 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from models.criss_cross_transformer import TransformerEncoderLayer, TransformerEncoder
-
+# from models.DDX_transformer import TransformerEncoderLayer, TransformerEncoder
+# from models.autoformer import TransformerEncoderLayer, TransformerEncoder
 
 class CBraMod(nn.Module):
-    def __init__(self, in_dim=200, out_dim=200, d_model=200, dim_feedforward=800, seq_len=30, n_layer=12,
-                    nhead=8):
+    def __init__(self, in_dim=200, out_dim=200, d_model=200, dim_feedforward=800, seq_len=30, n_layer=12, nhead=8):
         super().__init__()
         self.patch_embedding = PatchEmbedding(in_dim, out_dim, d_model, seq_len)
         encoder_layer = TransformerEncoderLayer(

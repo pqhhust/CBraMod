@@ -23,14 +23,13 @@ def iter_files(rootDir):
             file_path_list.append(file_name)
     return file_path_list
 
-
 def preprocessing_recording(file_path, file_key_list: list, db):
     raw = mne.io.read_raw_edf(file_path, preload=True)
     
     raw.pick_channels(selected_channels, ordered=True)
     # print(raw.info)
     raw.resample(200)
-    raw.filter(l_freq=0.3, h_freq=75)
+    raw.filter(l_freq=0.3, h_freq=40)
     raw.notch_filter((50))
     eeg_array = raw.to_data_frame().values
     # print(raw.info)
@@ -65,43 +64,6 @@ def preprocessing_recording(file_path, file_key_list: list, db):
             txn = db.begin(write=True)
             txn.put(key=sample_key.encode(), value=pickle.dumps(sample))
             txn.commit()
-        else:
-            # Interpolate values with abs >= 100
-            # fixed_sample = sample.copy()
-            # mask = np.abs(fixed_sample) >= 100
-            # for ch in range(fixed_sample.shape[0]):
-            #     for t in range(fixed_sample.shape[1]):
-            #         bad_idx = np.where(mask[ch, t, :])[0]
-            #         if bad_idx.size > 0:
-            #             good_idx = np.where(~mask[ch, t, :])[0]
-            #             if good_idx.size > 1:
-            #                 fixed_sample[ch, t, bad_idx] = np.interp(
-            #                     bad_idx, good_idx, fixed_sample[ch, t, good_idx]
-            #                 )
-            #             else:
-            #                 # If all are bad, set to zero
-            #                 fixed_sample[ch, t, bad_idx] = 0
-            # sample_key = f'{file_name}_{i}_interp'
-            # print(f"{sample_key} (interpolated)")
-            # file_key_list.append(sample_key)
-            # txn = db.begin(write=True)
-            # txn.put(key=sample_key.encode(), value=pickle.dumps(fixed_sample))
-            # txn.commit()
-            # Rescale sample to [-100, 100]
-            fixed_sample = sample.copy()
-            min_val = fixed_sample.min()
-            max_val = fixed_sample.max()
-            if max_val != min_val:
-                fixed_sample = 200 * (fixed_sample - min_val) / (max_val - min_val) - 100
-            else:
-                fixed_sample[:] = 0  # If constant, set to 0
-            sample_key = f'{file_name}_{i}_rescaled'
-            print(f"{sample_key} (rescaled)")
-            file_key_list.append(sample_key)
-            txn = db.begin(write=True)
-            txn.put(key=sample_key.encode(), value=pickle.dumps(fixed_sample))
-            txn.commit()
-            
 
 if __name__ == '__main__':
     setup_seed(1)
@@ -110,7 +72,7 @@ if __name__ == '__main__':
     file_path_list = sorted(file_path_list)
     random.shuffle(file_path_list)
     # print(file_path_list)
-    db = lmdb.open(r'/home/user01/aiotlab/pqhung/CBraMod/data/dummy_data_rescale', map_size=17179869184)
+    db = lmdb.open(r'/home/user01/aiotlab/pqhung/CBraMod/data/dummy_data_under40', map_size=17179869184)
     file_key_list = []
     for file_path in tqdm(file_path_list):
         preprocessing_recording(file_path, file_key_list, db)

@@ -23,12 +23,13 @@ class Trainer(object):
         self.model = model.cuda()
         if self.params.downstream_dataset in ['FACED', 'SEED-V', 'PhysioNet-MI', 'ISRUC', 'BCIC2020-3', 'TUEV', 'BCIC-IV-2a']:
             self.criterion = CrossEntropyLoss(label_smoothing=self.params.label_smoothing).cuda()
-        elif self.params.downstream_dataset in ['SHU-MI', 'CHB-MIT', 'Mumtaz2016', 'MentalArithmetic', 'TUAB']:
-            self.criterion = BCEWithLogitsLoss().cuda()
+        elif self.params.downstream_dataset in ['SHU-MI', 'CHB-MIT', 'Mumtaz2016', 'MentalArithmetic', 'TUAB', 'PEARL', 'TIA']:
+            self.criterion = BCEWithLogitsLoss()
         elif self.params.downstream_dataset == 'SEED-VIG':
             self.criterion = MSELoss().cuda()
 
         self.best_model_states = None
+        self.last_model_states = None
 
         backbone_params = []
         other_params = []
@@ -67,6 +68,122 @@ class Trainer(object):
             self.optimizer, T_max=self.params.epochs * self.data_length, eta_min=1e-6
         )
         print(self.model)
+        
+    def train_for_multiclass_fold(self, fold):
+        f1_best = 0
+        kappa_best = 0
+        acc_best = 0
+        cm_best = None
+        for epoch in range(self.params.epochs):
+            self.model.train()
+            start_time = timer()
+            losses = []
+            for x, y in tqdm(self.data_loader['train'], mininterval=10):
+                self.optimizer.zero_grad()
+                x = x.cuda()
+                y = y.cuda()
+                pred = self.model(x)
+                if self.params.downstream_dataset == 'ISRUC':
+                    loss = self.criterion(pred.transpose(1, 2), y)
+                else:
+                    loss = self.criterion(pred, y)
+
+                loss.backward()
+                losses.append(loss.data.cpu().numpy())
+                if self.params.clip_value > 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.params.clip_value)
+                    # torch.nn.utils.clip_grad_value_(self.model.parameters(), self.params.clip_value)
+                self.optimizer.step()
+                self.optimizer_scheduler.step()
+
+            optim_state = self.optimizer.state_dict()
+
+            with torch.no_grad():
+                acc, kappa, f1, cm = self.val_eval.get_metrics_for_multiclass(self.model)
+                wandb.log({
+                    f"epoch_{fold}": epoch + 1,
+                    f"train_{fold}/loss_fold": np.mean(losses),
+                    f"val_{fold}/acc": acc,
+                    f"val_{fold}/kappa": kappa,
+                    f"val_{fold}/f1": f1,
+                    # "val/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist()),
+                    f"lr": optim_state['param_groups'][0]['lr'],
+                    f"time_min": (timer() - start_time) / 60
+                })
+                print(
+                    "Epoch {} : Training Loss: {:.5f}, acc: {:.5f}, kappa: {:.5f}, f1: {:.5f}, LR: {:.5f}, Time elapsed {:.2f} mins".format(
+                        epoch + 1,
+                        np.mean(losses),
+                        acc,
+                        kappa,
+                        f1,
+                        optim_state['param_groups'][0]['lr'],
+                        (timer() - start_time) / 60
+                    )
+                )
+                print(cm)
+                if kappa > kappa_best:
+                    print("kappa increasing....saving weights !! ")
+                    print("Val Evaluation: acc: {:.5f}, kappa: {:.5f}, f1: {:.5f}".format(
+                        acc,
+                        kappa,
+                        f1,
+                    ))
+                    best_f1_epoch = epoch + 1
+                    acc_best = acc
+                    kappa_best = kappa
+                    f1_best = f1
+                    cm_best = cm
+                    self.best_model_states = copy.deepcopy(self.model.state_dict())
+                self.last_model_states = copy.deepcopy(self.model.state_dict())
+        self.model.load_state_dict(self.best_model_states)
+        with torch.no_grad():
+            print("***************************Test************************")
+            acc, kappa, f1, cm = self.test_eval.get_metrics_for_multiclass(self.model)
+            print("***************************Test results************************")
+            print(
+                "Test Evaluation: acc: {:.5f}, kappa: {:.5f}, f1: {:.5f}".format(
+                    acc,
+                    kappa,
+                    f1,
+                )
+            )
+            print(cm)
+            wandb.log({
+                f"test_{fold}/acc": acc,
+                f"test_{fold}/kappa": kappa,
+                f"test_{fold}/f1": f1,
+                # "test/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist())
+            })
+            if not os.path.isdir(self.params.model_dir):
+                os.makedirs(self.params.model_dir)
+            model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_kappa_{:.5f}_f1_{:.5f}.pth".format(best_f1_epoch, acc, kappa, f1)
+            torch.save(self.model.state_dict(), model_path)
+            print("model save in " + model_path)
+        with torch.no_grad():
+            print("***************************Test last model************************")
+            self.model.load_state_dict(self.last_model_states)
+            acc, kappa, f1, cm = self.test_eval.get_metrics_for_multiclass(self.model)
+            print("***************************Test last model results************************")
+            print(
+                "Test Evaluation: acc: {:.5f}, kappa: {:.5f}, f1: {:.5f}".format(
+                    acc,
+                    kappa,
+                    f1,
+                )
+            )
+            print(cm)
+            wandb.log({
+                f"test_last_{fold}/acc": acc,
+                f"test_last_{fold}/kappa": kappa,
+                f"test_last_{fold}/f1": f1,
+                # "test/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist())
+            })
+            if not os.path.isdir(self.params.model_dir):
+                os.makedirs(self.params.model_dir)
+            model_path = self.params.model_dir + "/lastmodel_epoch{}_acc_{:.5f}_kappa_{:.5f}_f1_{:.5f}.pth".format(self.params.epochs, acc, kappa, f1)
+            torch.save(self.model.state_dict(), model_path)
+            print("last model save in " + model_path)
 
     def train_for_multiclass(self):
         f1_best = 0
@@ -170,8 +287,8 @@ class Trainer(object):
             losses = []
             for x, y in tqdm(self.data_loader['train'], mininterval=10):
                 self.optimizer.zero_grad()
-                x = x.cuda()
-                y = y.cuda()
+                # x = x.cuda()
+                # y = y.cuda()
                 pred = self.model(x)
 
                 loss = self.criterion(pred, y)
@@ -187,10 +304,17 @@ class Trainer(object):
             optim_state = self.optimizer.state_dict()
 
             with torch.no_grad():
-                acc, pr_auc, roc_auc, cm = self.val_eval.get_metrics_for_binaryclass(self.model)
                 wandb.log({
                     "epoch": epoch + 1,
                     "train/loss": np.mean(losses),
+                }, step=epoch + 1)
+                acc, pr_auc, roc_auc, cm = self.val_eval.get_metrics_for_binaryclass(self.model)
+                # except:
+                #     print("Error in calculating metrics, skip this epoch")
+                #     continue
+                wandb.log({
+                    # "epoch": epoch + 1,
+                    # "train/loss": np.mean(losses),
                     "val/acc": acc,
                     "val/pr_auc": pr_auc,
                     "val/roc_auc": roc_auc,
@@ -210,11 +334,20 @@ class Trainer(object):
                     )
                 )
                 print(cm)
+                test_acc, test_pr_auc, test_roc_auc, test_cm = self.test_eval.get_metrics_for_binaryclass(self.model)
+                print(
+                    "Test Evaluation: acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}".format(
+                        test_acc,
+                        test_pr_auc,
+                        test_roc_auc,
+                    )
+                )
+                print(test_cm)
                 if roc_auc > roc_auc_best:
                     print("roc_auc increasing....saving weights !! ")
                     print("Val Evaluation: acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}".format(
                         acc,
-                        pr_auc,
+                        pr_auc,                     
                         roc_auc,
                     ))
                     best_f1_epoch = epoch + 1

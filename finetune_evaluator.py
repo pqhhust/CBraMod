@@ -33,6 +33,7 @@ class Evaluator:
         cm = confusion_matrix(truths, preds)
         return acc, kappa, f1, cm
 
+    @torch.no_grad()
     def get_metrics_for_binaryclass(self, model):
         model.eval()
 
@@ -40,8 +41,8 @@ class Evaluator:
         preds = []
         scores = []
         for x, y in tqdm(self.data_loader, mininterval=1):
-            x = x.cuda()
-            y = y.cuda()
+            # x = x.cuda()
+            # y = y.cuda()
             pred = model(x)
             score_y = torch.sigmoid(pred)
             pred_y = torch.gt(score_y, 0.5).long()
@@ -65,8 +66,8 @@ class Evaluator:
         truths = []
         preds = []
         for x, y in tqdm(self.data_loader, mininterval=1):
-            x = x.cuda()
-            y = y.cuda()
+            # x = x.cuda()
+            # y = y.cuda()
             pred = model(x)
             truths += y.cpu().squeeze().numpy().tolist()
             preds += pred.cpu().squeeze().numpy().tolist()

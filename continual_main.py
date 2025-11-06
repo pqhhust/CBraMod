@@ -7,9 +7,11 @@ from torch.utils.data import DataLoader
 from datasets.pretraining_dataset import PretrainingDataset
 from datasets.merged_dataset import MergedPretrainingDataset
 from models import cbramod
-from pretrain_trainer import Trainer
+from pretrain_trainer import Trainer, CLTrainer
 
 import wandb
+
+import copy
 
 
 def setup_seed(seed):
@@ -25,9 +27,9 @@ def main():
     parser.add_argument('--seed', type=int, default=42, help='random seed (default: 0)')
     parser.add_argument('--cuda', type=int, default=0, help='cuda number (default: 1)')
     parser.add_argument('--parallel', type=bool, default=False, help='parallel')
-    parser.add_argument('--epochs', type=int, default=40, help='number of epochs (default: 5)')
+    parser.add_argument('--epochs', type=int, default=5, help='number of epochs (default: 5)')
     parser.add_argument('--batch_size', type=int, default=128, help='batch size for training (default: 32)')
-    parser.add_argument('--lr', type=float, default=5e-4, help='learning rate (default: 1e-3)')
+    parser.add_argument('--lr', type=float, default=1e-4, help='learning rate (default: 1e-3)')
     parser.add_argument('--weight_decay', type=float, default=5e-2, help='weight_decay')
     parser.add_argument('--clip_value', type=float, default=1, help='clip_value')
     parser.add_argument('--lr_scheduler', type=str, default='CosineAnnealingLR',
@@ -44,6 +46,16 @@ def main():
     parser.add_argument('--nhead', type=int, default=8, help='nhead')
     parser.add_argument('--need_mask', type=bool, default=True, help='need_mask')
     parser.add_argument('--mask_ratio', type=float, default=0.5, help='mask_ratio')
+    
+    parser.add_argument('--cl_epochs', type=int, default=40, help='number of epochs for cl (default: 5)')
+    parser.add_argument('--cl_batch_size', type=int, default=128, help='batch size for training for cl (default: 32)')
+    parser.add_argument('--cl_lr', type=float, default=1e-4, help='learning rate for cl (default: 1e-3)')
+    parser.add_argument('--cl_weight_decay', type=float, default=5e-2, help='weight_decay for cl')
+    parser.add_argument('--cl_clip_value', type=float, default=1, help='clip_value for cl')
+    parser.add_argument('--cl_lr_scheduler', type=str, default='CosineAnnealingLR',
+                        help='lr_scheduler: CosineAnnealingLR, ExponentialLR, StepLR, MultiStepLR, CyclicLR for cl')
+    parser.add_argument('--align_every', type=int, default=2, help='align_every for cl')
+    parser.add_argument('--buffer_dir', type=str, default=None, help='buffer_dir for cl')
 
     parser.add_argument('--pretrain_dataset', type=str, default='TUEG',
                         help='[TUEG, Merged]')
@@ -57,7 +69,7 @@ def main():
     parser.add_argument('--model_dir',   type=str,   default='model_dir', help='model_dir')
     params = parser.parse_args()
     
-    group = 'Autoformer-Transformer'
+    group = 'Continual-Transformer'
     
     wandb.init(project='EEG_HUST_IP_Colab', 
                group=group,
@@ -91,6 +103,25 @@ def main():
         model.load_state_dict(torch.load(params.foundation_dir, map_location=map_location))
     trainer = Trainer(params, data_loader, model)
     trainer.train()
+    
+    params.epochs = params.cl_epochs
+    params.batch_size = params.cl_batch_size
+    params.lr = params.cl_lr
+    params.weight_decay = params.cl_weight_decay
+    params.clip_value = params.cl_clip_value
+    params.lr_scheduler = params.cl_lr_scheduler
+
+    buffer_loader = DataLoader(
+        PretrainingDataset(dataset_dir=params.buffer_dir),
+        batch_size=params.cl_batch_size,
+        num_workers=4,
+        shuffle=True,
+    )
+
+    ref_model = copy.deepcopy(model)
+    model.load_state_dict(torch.load(params.foundation_dir, map_location='cpu'))
+    cl_trainer = CLTrainer(params, data_loader, model, ref_model, buffer_loader)
+    cl_trainer.train()
     
     db = getattr(pretrained_dataset, 'db', None)
     if db is not None:

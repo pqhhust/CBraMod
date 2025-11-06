@@ -1,4 +1,7 @@
 .idea
 data
-pretrained_weights.pth 
+pretrained_weights
 .vscode
+__pycache__
+log_slurm
+wandb

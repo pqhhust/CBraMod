@@ -1,5 +1,3 @@
-## this is the implementation for Dual-Domain Cross Transformer
-
 import copy
 from typing import Optional, Any, Union, Callable
 
@@ -10,8 +8,7 @@ import warnings
 from torch import Tensor
 from torch.nn import functional as F
 
-from models.memory_efficient_attention import Attention
-
+from transformers.models.autoformer.modeling_autoformer import AutoformerAttention
 
 class TransformerEncoder(nn.Module):
     def __init__(self, encoder_layer, num_layers, norm=None, enable_nested_tensor=True, mask_check=True):
@@ -45,57 +42,16 @@ class TransformerEncoderLayer(nn.Module):
                  bias: bool = True, device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
-        # self.self_attn_s = nn.MultiheadAttention(d_model//2, nhead // 2, dropout=dropout,
-        #                                          bias=bias, batch_first=batch_first,
-        #                                          **factory_kwargs)
+        self.self_attn_s = nn.MultiheadAttention(d_model//2, nhead // 2, dropout=dropout,
+                                                 bias=bias, batch_first=batch_first,
+                                                 **factory_kwargs)
         # self.self_attn_t = nn.MultiheadAttention(d_model//2, nhead // 2, dropout=dropout,
         #                                          bias=bias, batch_first=batch_first,
         #                                          **factory_kwargs)
-        self.self_attn_st = Attention(
-            dim = d_model,
-            out_dim = d_model // 2,
-            dim_head = d_model // nhead,
-            heads = nhead // 2,
-            causal = False,
-            memory_efficient = False,
-            q_bucket_size = 1024,
-            k_bucket_size = 2048
-        )
-
-        self.self_attn_tt = Attention(
-            dim = d_model,
-            out_dim = d_model // 2,
-            dim_head = d_model // nhead,
-            heads = nhead // 2,
-            causal = False,
-            memory_efficient = False,
-            q_bucket_size = 1024,
-            k_bucket_size = 2048
-        )
-
-        self.self_attn_sf = Attention(
-            dim = d_model,
-            out_dim = d_model // 2,
-            dim_head = d_model // nhead,
-            heads = nhead // 2,
-            causal = False,
-            memory_efficient = False,
-            q_bucket_size = 1024,
-            k_bucket_size = 2048
-        )
-
-        self.self_attn_tf = Attention(
-            dim = d_model,
-            out_dim = d_model // 2,
-            dim_head = d_model // nhead,
-            heads = nhead // 2,
-            causal = False,
-            memory_efficient = False,
-            q_bucket_size = 1024,
-            k_bucket_size = 2048
-        )
-
-        self.fused_attention = nn.Parameter(torch.tensor([0.5]))
+        
+        # self.self_attn_s = AutoformerAttention(embed_dim=d_model // 2, num_heads=nhead // 2, dropout = dropout, is_decoder = False, bias = bias, autocorrelation_factor = 3)
+        
+        self.self_attn_t = AutoformerAttention(embed_dim=d_model // 2, num_heads=nhead // 2, dropout = dropout, is_decoder = False, bias = bias, autocorrelation_factor = 3)
 
         # Implementation of Feedforward model
         self.linear1 = nn.Linear(d_model, dim_feedforward, bias=bias, **factory_kwargs)
@@ -144,59 +100,28 @@ class TransformerEncoderLayer(nn.Module):
     def _sa_block(self, x: Tensor,
                   attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor], is_causal: bool = False) -> Tensor:
         bz, ch_num, patch_num, patch_size = x.shape
-        fft_size = patch_size // 2 // 2 + 1 - (patch_size // 2) % 2
-        # print(fft_size)
-        x_f = torch.fft.fft(x, dim=-1, norm='forward')
-        x_f = torch.abs(x_f)
-
-        x_st = self.self_attn_st(x.transpose(1, 2).contiguous().view(bz*patch_num, ch_num, patch_size))
-        x_st = x_st.view(bz, patch_num, ch_num, patch_size // 2).transpose(1, 2)
-
-        x_tt = self.self_attn_tt(x.view(bz*ch_num, patch_num, patch_size))
-        x_tt = x_tt.view(bz, ch_num, patch_num, patch_size // 2)
-
-        x_sf = self.self_attn_sf(x_f.transpose(1, 2).contiguous().view(bz*patch_num, ch_num, patch_size))
-        # print(x_sf.shape)
-        # x_sf = torch.cat([x_sf[:, :, : fft_size], x_sf[:, :, 1 : fft_size - 1].flip(dims=[-1])], dim=-1)
-        # print(x_sf.shape)
-        # print(torch.fft.ifft(x_sf, dim=-1, norm='forward')[-1,-1,:])
-        x_sf = torch.fft.ifft(x_sf, dim=-1, norm='forward').real
-        # print(x_sf.shape)
-        # print(x_sf[-1,-1,:])
-        x_sf = x_sf.view(bz, patch_num, ch_num, patch_size // 2).transpose(1, 2)
-
-        x_tf = self.self_attn_tf(x_f.view(bz*ch_num, patch_num, patch_size))
-        # x_tf = torch.cat([x_tf[:, :, : fft_size], x_tf[:, :, 1 : fft_size - 1].flip(dims=[-1])], dim=-1)
-        x_tf = torch.fft.ifft(x_tf, dim=-1, norm='forward').real
-        x_tf = x_tf.view(bz, ch_num, patch_num, patch_size // 2)
-
-        x = torch.concat((x_st, x_tt), dim=3)
-
-        x_f = torch.concat((x_sf, x_tf), dim=3)
-
-        x = self.fused_attention[0] * x + (1 - self.fused_attention[0]) * x_f
-        # xs = x[:, :, :, :patch_size // 2]
-        # xt = x[:, :, :, patch_size // 2:]
-        # xs = xs.transpose(1, 2).contiguous().view(bz*patch_num, ch_num, patch_size // 2)
-        # xt = xt.contiguous().view(bz*ch_num, patch_num, patch_size // 2)
-        # xs = self.self_attn_s(xs, xs, xs,
-        #                      attn_mask=attn_mask,
-        #                      key_padding_mask=key_padding_mask,
-        #                      need_weights=False)[0]
-        # xs = xs.contiguous().view(bz, patch_num, ch_num, patch_size//2).transpose(1, 2)
+        xs = x[:, :, :, :patch_size // 2]
+        xt = x[:, :, :, patch_size // 2:]
+        xs = xs.transpose(1, 2).contiguous().view(bz*patch_num, ch_num, patch_size // 2)
+        xt = xt.contiguous().view(bz*ch_num, patch_num, patch_size // 2)
+        xs = self.self_attn_s(xs, xs, xs,
+                             attn_mask=attn_mask,
+                             key_padding_mask=key_padding_mask,
+                             need_weights=False)[0]
+        xs = xs.contiguous().view(bz, patch_num, ch_num, patch_size//2).transpose(1, 2)
         # xt = self.self_attn_t(xt, xt, xt,
         #                       attn_mask=attn_mask,
         #                       key_padding_mask=key_padding_mask,
         #                       need_weights=False)[0]
-        # xt = xt.contiguous().view(bz, ch_num, patch_num, patch_size//2)
-        # x = torch.concat((xs, xt), dim=3)
+        xt = self.self_attn_t(xt)[0]
+        xt = xt.contiguous().view(bz, ch_num, patch_num, patch_size//2)
+        x = torch.concat((xs, xt), dim=3)
         return self.dropout1(x)
 
     # feed forward block
     def _ff_block(self, x: Tensor) -> Tensor:
         x = self.linear2(self.dropout(self.activation(self.linear1(x))))
         return self.dropout2(x)
-    
 
 
 
@@ -297,14 +222,4 @@ if __name__ == '__main__':
 
     a = torch.randn((4, 19, 30, 256)).cuda()
     b = encoder(a)
-    print(a.shape, b.shape)
-
-if __name__ == "__main__":
-    encoder_layer = TransformerEncoderLayer(
-        d_model=200, nhead=8, dim_feedforward=800, batch_first=True
-    )
-    encoder_layer = encoder_layer.cuda()
-
-    a = torch.randn((64, 19, 30, 200)).cuda()
-    b = encoder_layer(a)
     print(a.shape, b.shape)
