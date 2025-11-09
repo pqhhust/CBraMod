@@ -10,6 +10,7 @@ class Evaluator:
         self.params = params
         self.data_loader = data_loader
 
+    @torch.no_grad()
     def get_metrics_for_multiclass(self, model):
         model.eval()
 
@@ -22,8 +23,20 @@ class Evaluator:
             pred = model(x)
             pred_y = torch.max(pred, dim=-1)[1]
 
-            truths += y.cpu().squeeze().numpy().tolist()
-            preds += pred_y.cpu().squeeze().numpy().tolist()
+            # Ensure conversion to list even for scalar values
+            y_numpy = y.cpu().squeeze().numpy()
+            pred_numpy = pred_y.cpu().squeeze().numpy()
+            
+            # Handle both scalar and array cases
+            if y_numpy.ndim == 0:
+                truths.append(y_numpy.item())
+            else:
+                truths.extend(y_numpy.tolist())
+                
+            if pred_numpy.ndim == 0:
+                preds.append(pred_numpy.item())
+            else:
+                preds.extend(pred_numpy.tolist())
 
         truths = np.array(truths)
         preds = np.array(preds)
@@ -41,14 +54,32 @@ class Evaluator:
         preds = []
         scores = []
         for x, y in tqdm(self.data_loader, mininterval=1):
-            # x = x.cuda()
-            # y = y.cuda()
+            x = x.cuda()
+            y = y.cuda()
             pred = model(x)
             score_y = torch.sigmoid(pred)
             pred_y = torch.gt(score_y, 0.5).long()
-            truths += y.long().cpu().squeeze().numpy().tolist()
-            preds += pred_y.cpu().squeeze().numpy().tolist()
-            scores += score_y.cpu().numpy().tolist()
+            
+            # Ensure conversion to list even for scalar values
+            y_numpy = y.long().cpu().squeeze().numpy()
+            pred_numpy = pred_y.cpu().squeeze().numpy()
+            score_numpy = score_y.cpu().numpy()
+            
+            # Handle both scalar and array cases
+            if y_numpy.ndim == 0:
+                truths.append(y_numpy.item())
+            else:
+                truths.extend(y_numpy.tolist())
+                
+            if pred_numpy.ndim == 0:
+                preds.append(pred_numpy.item())
+            else:
+                preds.extend(pred_numpy.tolist())
+                
+            if score_numpy.ndim == 0:
+                scores.append(score_numpy.item())
+            else:
+                scores.extend(score_numpy.tolist())
 
         truths = np.array(truths)
         preds = np.array(preds)
@@ -69,8 +100,21 @@ class Evaluator:
             # x = x.cuda()
             # y = y.cuda()
             pred = model(x)
-            truths += y.cpu().squeeze().numpy().tolist()
-            preds += pred.cpu().squeeze().numpy().tolist()
+            
+            # Ensure conversion to list even for scalar values
+            y_numpy = y.cpu().squeeze().numpy()
+            pred_numpy = pred.cpu().squeeze().numpy()
+            
+            # Handle both scalar and array cases
+            if y_numpy.ndim == 0:
+                truths.append(y_numpy.item())
+            else:
+                truths.extend(y_numpy.tolist())
+                
+            if pred_numpy.ndim == 0:
+                preds.append(pred_numpy.item())
+            else:
+                preds.extend(pred_numpy.tolist())
 
         truths = np.array(truths)
         preds = np.array(preds)

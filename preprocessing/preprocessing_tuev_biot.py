@@ -164,7 +164,7 @@ def save_pickle(object, filename):
 TUEV dataset is downloaded from https://isip.piconepress.com/projects/tuh_eeg/html/downloads.shtml
 """
 
-root = "/home/user01/aiotlab/pqhung/EEG/TUEV/edf"
+root = "/mnt/disk1/aiotlab/pqhung/EEG_data/TUEV/edf"
 target = "./data/datasets/BigDownstream/TUEV_refine"
 
 train_out_dir = os.path.join(target, "processed_train")

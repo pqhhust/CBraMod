@@ -9,11 +9,11 @@ import wandb
 import os
 
 from datasets import faced_dataset, seedv_dataset, physio_dataset, shu_dataset, isruc_dataset, chb_dataset, \
-    speech_dataset, mumtaz_dataset, seedvig_dataset, stress_dataset, tuev_dataset, tuab_dataset, bciciv2a_dataset, pearl_dataset, tia_dataset, bcic2a_fold_dataset, tuev_fold_dataset
+    speech_dataset, mumtaz_dataset, seedvig_dataset, stress_dataset, tuev_dataset, tuab_dataset, bciciv2a_dataset, pearl_dataset, tia_dataset, bcic2a_fold_dataset, tuev_fold_dataset, tuab_fold_dataset
 from finetune_trainer import Trainer
 from models import model_for_faced, model_for_seedv, model_for_physio, model_for_shu, model_for_isruc, model_for_chb, \
     model_for_speech, model_for_mumtaz, model_for_seedvig, model_for_stress, model_for_tuev, model_for_tuab, \
-    model_for_bciciv2a, model_for_pearl, model_for_tia, biot_for_bciciv2a, biot_for_tuev
+    model_for_bciciv2a, model_for_pearl, model_for_tia, biot_for_bciciv2a, biot_for_tuev, biot_for_tuab
 
 
 
@@ -150,11 +150,20 @@ def main():
             t = Trainer(params, data_loader, model)
             t.train_for_multiclass()
     elif params.downstream_dataset == 'TUAB':
-        load_dataset = tuab_dataset.LoadDataset(params)
-        data_loader = load_dataset.get_data_loader()
-        model = model_for_tuab.Model(params)
-        t = Trainer(params, data_loader, model)
-        t.train_for_binaryclass()
+        if params.cross_validation != 0:
+            for fold in range(1, params.cross_validation + 1):
+                print(f'Cross-validation fold {fold}')
+                load_dataset = tuab_fold_dataset.LoadFoldDataset(params, fold)
+                data_loader = load_dataset.get_data_loader()
+                model = biot_for_tuab.Model(params)
+                t = Trainer(params, data_loader, model)
+                t.train_for_binaryclass_fold(fold)
+        else:
+            load_dataset = tuab_dataset.LoadDataset(params)
+            data_loader = load_dataset.get_data_loader()
+            model = model_for_tuab.Model(params)
+            t = Trainer(params, data_loader, model)
+            t.train_for_binaryclass()
     elif params.downstream_dataset == 'BCIC-IV-2a':
         if params.cross_validation != 0:
             for fold in range(1, params.cross_validation + 1):

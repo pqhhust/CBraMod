@@ -83,6 +83,8 @@ class Trainer(object):
                 x = x.cuda()
                 y = y.cuda()
                 pred = self.model(x)
+                # print(y.min(), y.max(), y.shape)
+                # print(pred.shape)
                 if self.params.downstream_dataset == 'ISRUC':
                     loss = self.criterion(pred.transpose(1, 2), y)
                 else:
@@ -276,6 +278,121 @@ class Trainer(object):
             torch.save(self.model.state_dict(), model_path)
             print("model save in " + model_path)
 
+    def train_for_binaryclass_fold(self, fold):
+        acc_best = 0
+        roc_auc_best = 0
+        pr_auc_best = 0
+        cm_best = None
+        for epoch in range(self.params.epochs):
+            self.model.train()
+            start_time = timer()
+            losses = []
+            for x, y in tqdm(self.data_loader['train'], mininterval=10):
+                self.optimizer.zero_grad()
+                x = x.cuda()
+                y = y.cuda()
+                pred = self.model(x)
+
+                loss = self.criterion(pred, y)
+
+                loss.backward()
+                losses.append(loss.data.cpu().numpy())
+                if self.params.clip_value > 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.params.clip_value)
+                    # torch.nn.utils.clip_grad_value_(self.model.parameters(), self.params.clip_value)
+                self.optimizer.step()
+                self.optimizer_scheduler.step()
+
+            optim_state = self.optimizer.state_dict()
+
+            with torch.no_grad():
+                acc, pr_auc, roc_auc, cm = self.val_eval.get_metrics_for_binaryclass(self.model)
+                wandb.log({
+                    f"epoch_{fold}": epoch + 1,
+                    f"train_{fold}/loss_fold": np.mean(losses),
+                    f"val_{fold}/acc": acc,
+                    f"val_{fold}/pr_auc": pr_auc,
+                    f"val_{fold}/roc_auc": roc_auc,
+                    # "val/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist()),
+                    f"lr": optim_state['param_groups'][0]['lr'],
+                    f"time_min": (timer() - start_time) / 60
+                })
+                print(
+                    "Epoch {} : Training Loss: {:.5f}, acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}, LR: {:.5f}, Time elapsed {:.2f} mins".format(
+                        epoch + 1,
+                        np.mean(losses),
+                        acc,
+                        pr_auc,
+                        roc_auc,
+                        optim_state['param_groups'][0]['lr'],
+                        (timer() - start_time) / 60
+                    )
+                )
+                print(cm)
+                if roc_auc > roc_auc_best:
+                    print("roc_auc increasing....saving weights !! ")
+                    print("Val Evaluation: acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}".format(
+                        acc,
+                        pr_auc,
+                        roc_auc,
+                    ))
+                    best_epoch = epoch + 1
+                    acc_best = acc
+                    pr_auc_best = pr_auc
+                    roc_auc_best = roc_auc
+                    cm_best = cm
+                    self.best_model_states = copy.deepcopy(self.model.state_dict())
+                self.last_model_states = copy.deepcopy(self.model.state_dict())
+        self.model.load_state_dict(self.best_model_states)
+        with torch.no_grad():
+            print("***************************Test************************")
+            acc, pr_auc, roc_auc, cm = self.test_eval.get_metrics_for_binaryclass(self.model)
+            print("***************************Test results************************")
+            print(
+                "Test Evaluation: acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}".format(
+                    acc,
+                    pr_auc,
+                    roc_auc,
+                )
+            )
+            print(cm)
+            wandb.log({
+                f"test_{fold}/acc": acc,
+                f"test_{fold}/pr_auc": pr_auc,
+                f"test_{fold}/roc_auc": roc_auc,
+                # "test/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist())
+            })
+            if not os.path.isdir(self.params.model_dir):
+                os.makedirs(self.params.model_dir)
+            model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_pr_{:.5f}_roc_{:.5f}.pth".format(best_epoch, acc, pr_auc, roc_auc)
+            torch.save(self.model.state_dict(), model_path)
+            print("model save in " + model_path)
+        with torch.no_grad():
+            print("***************************Test last model************************")
+            self.model.load_state_dict(self.last_model_states)
+            acc, pr_auc, roc_auc, cm = self.test_eval.get_metrics_for_binaryclass(self.model)
+            print("***************************Test last model results************************")
+            print(
+                "Test Evaluation: acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}".format(
+                    acc,
+                    pr_auc,
+                    roc_auc,
+                )
+            )
+            print(cm)
+            wandb.log({
+                f"test_last_{fold}/acc": acc,
+                f"test_last_{fold}/pr_auc": pr_auc,
+                f"test_last_{fold}/roc_auc": roc_auc,
+                # "test/cm": wandb.plot.confusion_matrix(probs=None, y_true=None, preds=None, cm=cm.tolist())
+            })
+            if not os.path.isdir(self.params.model_dir):
+                os.makedirs(self.params.model_dir)
+            model_path = self.params.model_dir + "/lastmodel_epoch{}_acc_{:.5f}_pr_{:.5f}_roc_{:.5f}.pth".format(self.params.epochs, acc, pr_auc, roc_auc)
+            torch.save(self.model.state_dict(), model_path)
+            print("last model save in " + model_path)
+            
+
     def train_for_binaryclass(self):
         acc_best = 0
         roc_auc_best = 0
@@ -287,8 +404,8 @@ class Trainer(object):
             losses = []
             for x, y in tqdm(self.data_loader['train'], mininterval=10):
                 self.optimizer.zero_grad()
-                # x = x.cuda()
-                # y = y.cuda()
+                x = x.cuda()
+                y = y.cuda()
                 pred = self.model(x)
 
                 loss = self.criterion(pred, y)

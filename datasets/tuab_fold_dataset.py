@@ -25,16 +25,16 @@ class CustomDataset(Dataset):
     def __getitem__(self, idx):
         file = self.files[idx]
         data_dict = pickle.load(open(os.path.join(self.data_dir, file), "rb"))
-        data = data_dict['signal']
-        label = int(data_dict['label'][0]-1)
-        # data = signal.resample(data, 1000, axis=-1)
-        data = data.reshape(16, 5, 200)
+        data = data_dict['X']
+        label = data_dict['y']
+        # data = signal.resample(data, 2000, axis=-1)
+        data = data.reshape(16, 10, 200)
         return data/100, label
 
     def collate(self, batch):
         x_data = np.array([x[0] for x in batch])
         y_label = np.array([x[1] for x in batch])
-        return to_tensor(x_data), to_tensor(y_label).long()
+        return to_tensor(x_data), to_tensor(y_label)
 
 
 def get_stratified_folds(subjects, labels, seed, num_folds=4):
@@ -65,7 +65,7 @@ class LoadFoldDataset(object):
         self.seed = seed
 
     def get_data_loader(self):
-        all_train_files = os.listdir(os.path.join(self.datasets_dir, "processed_train"))
+        all_train_files = os.listdir(os.path.join(self.datasets_dir, "train"))
         subjects = list(set([f.split("_")[0] for f in all_train_files]))
         subjects.sort(key=lambda x: x)
         
@@ -74,8 +74,8 @@ class LoadFoldDataset(object):
         for subject in subjects:
             subject_files = [f for f in all_train_files if f.split("_")[0] == subject]
             # Load first file to get subject's label
-            data_dict = pickle.load(open(os.path.join(self.datasets_dir, "processed_train", subject_files[0]), "rb"))
-            label = int(data_dict['label'][0] - 1)
+            data_dict = pickle.load(open(os.path.join(self.datasets_dir, "train", subject_files[0]), "rb"))
+            label = data_dict['y']
             subject_labels.append(label)
         
         folds = get_stratified_folds(subjects, subject_labels, self.seed)
@@ -88,11 +88,11 @@ class LoadFoldDataset(object):
         
         train_files = [f for f in all_train_files if f.split("_")[0] in train_sub]
         val_files = [f for f in all_train_files if f.split("_")[0] in val_sub]
-        test_files = os.listdir(os.path.join(self.datasets_dir, "processed_eval"))
+        test_files = os.listdir(os.path.join(self.datasets_dir, "test"))
 
-        train_set = CustomDataset(os.path.join(self.datasets_dir, "processed_train"), train_files)
-        val_set = CustomDataset(os.path.join(self.datasets_dir, "processed_train"), val_files)
-        test_set = CustomDataset(os.path.join(self.datasets_dir, "processed_eval"), test_files)
+        train_set = CustomDataset(os.path.join(self.datasets_dir, "train"), train_files)
+        val_set = CustomDataset(os.path.join(self.datasets_dir, "train"), val_files)
+        test_set = CustomDataset(os.path.join(self.datasets_dir, "test"), test_files)
 
         print(len(train_set), len(val_set), len(test_set))
         print(len(train_set)+len(val_set)+len(test_set))
@@ -102,21 +102,56 @@ class LoadFoldDataset(object):
                 train_set,
                 batch_size=self.params.batch_size,
                 collate_fn=train_set.collate,
-                num_workers=self.params.num_workers,
                 shuffle=True,
             ),
             'val': DataLoader(
                 val_set,
                 batch_size=self.params.batch_size,
                 collate_fn=val_set.collate,
-                num_workers=self.params.num_workers,
                 shuffle=False,
             ),
             'test': DataLoader(
                 test_set,
                 batch_size=self.params.batch_size,
                 collate_fn=test_set.collate,
-                num_workers=self.params.num_workers,
+                shuffle=False,
+            ),
+        }
+        return data_loader
+
+
+class LoadDataset(object):
+    def __init__(self, params):
+        self.params = params
+        self.datasets_dir = params.datasets_dir
+
+    def get_data_loader(self):
+        train_files = os.listdir(os.path.join(self.datasets_dir, "train"))
+        val_files = os.listdir(os.path.join(self.datasets_dir, "val"))
+        test_files = os.listdir(os.path.join(self.datasets_dir, "test"))
+        
+        train_set = CustomDataset(os.path.join(self.datasets_dir, "train"), train_files)
+        val_set = CustomDataset(os.path.join(self.datasets_dir, "val"), val_files)
+        test_set = CustomDataset(os.path.join(self.datasets_dir, "test"), test_files)
+        print(len(train_set), len(val_set), len(test_set))
+        print(len(train_set) + len(val_set) + len(test_set))
+        data_loader = {
+            'train': DataLoader(
+                train_set,
+                batch_size=self.params.batch_size,
+                collate_fn=train_set.collate,
+                shuffle=True,
+            ),
+            'val': DataLoader(
+                val_set,
+                batch_size=self.params.batch_size,
+                collate_fn=val_set.collate,
+                shuffle=False,
+            ),
+            'test': DataLoader(
+                test_set,
+                batch_size=self.params.batch_size,
+                collate_fn=test_set.collate,
                 shuffle=False,
             ),
         }

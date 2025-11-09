@@ -106,4 +106,8 @@
 
 # python finetune_main.py --downstream_dataset BCIC-IV-2a --datasets_dir /home/user01/aiotlab/pqhung/EEG-CDCL/data/downstream/BCIC2a_processed/cbramod --num_of_classes 4 --seed 42 --lr 1e-3 --foundation_dir /home/user01/aiotlab/pqhung/BIOT/log-pretrain/52-unsupervised/checkpoints/epoch=38_step=46000.ckpt --cross_validation 9
 
-python finetune_main.py --downstream_dataset TUEV --datasets_dir /home/user01/aiotlab/pqhung/CBraMod/data/datasets/BigDownstream/TUEV_refine --num_of_classes 4 --seed 42 --lr 1e-3 --foundation_dir /home/user01/aiotlab/pqhung/BIOT/log-pretrain/52-unsupervised/checkpoints/epoch=20_step=24000.ckpt --cross_validation 4
+# CUDA_VISIBLE_DEVICES=1 python finetune_main.py --downstream_dataset TUEV --datasets_dir ./data/datasets/BigDownstream/TUEV_refine --num_of_classes 6 --seed 42 --lr 1e-3 --foundation_dir /mnt/disk1/aiotlab/pqhung/CBraMod/data/epoch=20_step=24000.ckpt --cross_validation 4 --num_workers 8
+# CUDA_VISIBLE_DEVICES=1 python finetune_main.py --downstream_dataset TUEV --datasets_dir ./data/datasets/BigDownstream/TUEV_refine --num_of_classes 6 --seed 42 --lr 1e-3 --foundation_dir /mnt/disk1/aiotlab/hieupc/New_CBraMod/BIOT/pretrained-models/EEG-six-datasets-18-channels.ckpt --cross_validation 4 --num_workers 8
+
+CUDA_VISIBLE_DEVICES=0 python finetune_main.py --downstream_dataset TUAB --datasets_dir /mnt/disk1/aiotlab/pqhung/EEG_data/TUAB/edf/process_refine --num_of_classes 2 --seed 42 --lr 1e-3 --foundation_dir /mnt/disk1/aiotlab/pqhung/CBraMod/data/epoch=20_step=24000.ckpt --cross_validation 4 --num_workers 32
+# CUDA_VISIBLE_DEVICES=1 python finetune_main.py --downstream_dataset TUAB --datasets_dir /mnt/disk1/aiotlab/pqhung/EEG_data/TUAB/edf/process_refine --num_of_classes 2 --seed 42 --lr 1e-3 --foundation_dir /mnt/disk1/aiotlab/hieupc/New_CBraMod/BIOT/pretrained-models/EEG-six-datasets-18-channels.ckpt --cross_validation 4 --num_workers 32

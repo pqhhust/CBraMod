@@ -41,7 +41,7 @@ class Model(nn.Module):
 
         self.classifier = nn.Sequential(
             nn.ELU(),
-            nn.Linear(256, param.num_of_classes)
+            nn.Linear(256, 1)
         )
 
     def forward(self, x):
@@ -53,4 +53,4 @@ class Model(nn.Module):
         # print('Shape after channel conv:', feats.shape)
         feats = self.biot(feats)
         out = self.classifier(feats)
-        return out
+        return out.squeeze(-1)
