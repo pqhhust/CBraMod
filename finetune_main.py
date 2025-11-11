@@ -151,7 +151,7 @@ def main():
             t.train_for_multiclass()
     elif params.downstream_dataset == 'TUAB':
         if params.cross_validation != 0:
-            for fold in range(1, params.cross_validation + 1):
+            for fold in range(3, params.cross_validation + 1):
                 print(f'Cross-validation fold {fold}')
                 load_dataset = tuab_fold_dataset.LoadFoldDataset(params, fold)
                 data_loader = load_dataset.get_data_loader()

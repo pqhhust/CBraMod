@@ -283,6 +283,7 @@ class Trainer(object):
         roc_auc_best = 0
         pr_auc_best = 0
         cm_best = None
+        self.optimizer
         for epoch in range(self.params.epochs):
             self.model.train()
             start_time = timer()
@@ -342,7 +343,26 @@ class Trainer(object):
                     roc_auc_best = roc_auc
                     cm_best = cm
                     self.best_model_states = copy.deepcopy(self.model.state_dict())
+                    
+                ### for fast experiment when in deadline pressure
                 self.last_model_states = copy.deepcopy(self.model.state_dict())
+                acc_test, pr_auc_test, roc_auc_test, cm_test = self.test_eval.get_metrics_for_binaryclass(self.model)
+                wandb.log({
+                    f"test_{fold}/acc": acc_test,
+                    f"test_{fold}/pr_auc": pr_auc_test,
+                    f"test_{fold}/roc_auc": roc_auc_test,
+                })
+                print(
+                    "Test Mid Evaluation: acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}".format(
+                        acc_test,
+                        pr_auc_test,
+                        roc_auc_test,
+                    )
+                )
+                print(cm_test)
+                return
+                ### for fast experiment when in deadline pressure
+
         self.model.load_state_dict(self.best_model_states)
         with torch.no_grad():
             print("***************************Test************************")
